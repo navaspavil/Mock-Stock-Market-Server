@@ -1,5 +1,10 @@
 const fastify = require("fastify")({ logger: true });
 const { faker } = require("@faker-js/faker");
+const cors = require("@fastify/cors");
+
+fastify.register(cors, {
+  origin: true, // Allowed origins. [Todo: Fix for production]
+});
 
 /** Mock Data Generation */
 function generateMockData(symbol, period, startDate, endDate) {
