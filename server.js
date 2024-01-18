@@ -7,27 +7,32 @@ fastify.register(cors, {
 });
 
 /** Mock Data Generation */
-function generateMockData(symbol, period, startDate, endDate) {
+function generateMockData(period, startDate, endDate) {
   let data = [];
-  let currentDate = new Date(startDate);
-  endDate = new Date(endDate);
+  let openPrice = undefined;
 
-  while (currentDate <= endDate) {
+  while (startDate <= endDate) {
+    const closePrice = faker.finance.amount(100, 500, 2);
+    const low = closePrice - faker.number.float({ min: 10, max: 100 });
+
     data.push({
-      date: currentDate.toISOString().split("T")[0],
-      close: faker.finance.amount(100, 500, 2),
+      date: startDate.toISOString().split("T")[0],
+      close: closePrice,
       high: faker.finance.amount(500, 1000, 2),
-      low: faker.finance.amount(50, 100, 2),
-      volume: faker.datatype.number({ min: 1000, max: 10000 }),
+      low: low.toFixed(2),
+      open: openPrice ?? faker.finance.amount(500, 1000, 2),
+      volume: faker.number.int({ min: 1000, max: 10000 }),
     });
 
-    currentDate.setDate(currentDate.getDate() + 1);
+    openPrice = closePrice;
+    startDate.setDate(startDate.getDate() + 1);
   }
 
   if (period === "hourly") {
     data = data.flatMap((d) => {
       let hourlyData = [];
       let lastClose = parseFloat(d.close);
+      let openPrice = parseFloat(d.open);
 
       for (let hour = 0; hour < 24; hour++) {
         let hourlyHigh = lastClose + faker.number.float({ min: 0, max: 10 });
@@ -43,9 +48,11 @@ function generateMockData(symbol, period, startDate, endDate) {
           high: hourlyHigh.toFixed(2),
           low: hourlyLow.toFixed(2),
           close: hourlyClose.toFixed(2),
+          open: openPrice,
         });
 
-        lastClose = hourlyClose; // Update last close for the next hour
+        lastClose = hourlyClose;
+        openPrice = hourlyClose.toFixed(2);
       }
 
       return hourlyData;
@@ -56,14 +63,35 @@ function generateMockData(symbol, period, startDate, endDate) {
 }
 
 fastify.get("/api/search", async (request, reply) => {
-  const { symbol, period, startDate, endDate } = request.query;
+  const { symbol, period = "daily", startDate, endDate } = request.query;
 
-  if (!symbol || !period || !startDate || !endDate) {
-    reply.status(400).send({ message: "Missing required query parameters" });
+  if (!symbol) {
+    reply.status(400).send({ message: "Invalid stock name" });
     return;
   }
 
-  const stockData = generateMockData(symbol, period, startDate, endDate);
+  if (!startDate) {
+    reply.status(400).send({ message: "Invalid start date" });
+    return;
+  }
+
+  if (!endDate) {
+    reply.status(400).send({ message: "Invalid end date" });
+    return;
+  }
+  const formattedStartDate = new Date(startDate);
+  const formattedEndDate = new Date(endDate);
+
+  if (formattedEndDate < formattedStartDate) {
+    reply.status(400).send({ message: "Invalid date range" });
+    return;
+  }
+
+  const stockData = generateMockData(
+    period,
+    formattedStartDate,
+    formattedEndDate
+  );
 
   return reply.status(200).send({
     message: "Data fetched successfully",
